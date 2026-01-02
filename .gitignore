@@ -1,0 +1,8 @@
+node_modules
+.env
+*.sql
+package-lock.json
+.git
+.vscode
+*.git
+dist/

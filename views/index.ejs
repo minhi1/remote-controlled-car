@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Remote Control Car</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .landing-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    min-height: 60vh;
+  }
+
+  .landing-title {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  .user-info {
+    text-align: center;
+    margin-bottom: 10px;
+    color: #4CAF50;
+    font-size: 1.1rem;
+  }
+
+  .nav-links {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .nav-link {
+    display: block;
+    padding: 15px 30px;
+    text-align: center;
+    text-decoration: none;
+    color: #fff;
+    background: #4CAF50;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    transition: background 0.3s;
+  }
+
+  .nav-link:hover {
+    background: #45a049;
+  }
+
+  .nav-link.login {
+    background: #2196F3;
+  }
+
+  .nav-link.login:hover {
+    background: #0b7dda;
+  }
+
+  .nav-link.logout {
+    background: #f44336;
+  }
+
+  .nav-link.logout:hover {
+    background: #da190b;
+  }
+
+  .nav-link.guide {
+    background: #9C27B0;
+  }
+
+  .nav-link.guide:hover {
+    background: #7B1FA2;
+  }
+
+  .login-note {
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-top: -8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h2>Remote Control Car</h2>
+  <div class="status-bar">
+    <span>Welcome<% if (isLoggedIn) { %> <%= username %><% } %></span>
+  </div>
+</header>
+
+<main>
+  <div class="landing-container">
+    <h1 class="landing-title">Welcome to Remote Control Car System</h1>
+    
+    <% if (isLoggedIn) { %>
+      <p class="user-info">👋 Hello, <%= username %>!</p>
+    <% } %>
+
+    <div class="nav-links">
+      <a href="/car" class="nav-link">🚗 Control Car</a>
+      <a href="/guide" class="nav-link guide">📖 User Guide</a>
+      
+      <% if (isLoggedIn) { %>
+        <a href="/logout" class="nav-link logout">🚪 Logout</a>
+      <% } else { %>
+        <a href="/login" class="nav-link login">🔐 Login</a>
+        <p class="login-note">New user? Sign up available on login page</p>
+      <% } %>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

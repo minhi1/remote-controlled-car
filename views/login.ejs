@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Login - Remote Control Car</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .login-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 70vh;
+    padding: 20px;
+  }
+
+  .login-box {
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 30px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  .login-title {
+    font-size: 1.8rem;
+    text-align: center;
+    margin-bottom: 10px;
+    color: #4CAF50;
+  }
+
+  .login-subtitle {
+    text-align: center;
+    color: #aaa;
+    font-size: 0.9rem;
+    margin-bottom: 25px;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #ccc;
+    font-size: 0.95rem;
+  }
+
+  .form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #333;
+    color: #fff;
+    font-size: 1rem;
+    transition: border-color 0.3s;
+  }
+
+  .form-group input:focus {
+    outline: none;
+    border-color: #4CAF50;
+  }
+
+  .form-group input::placeholder {
+    color: #777;
+  }
+
+  .btn-login {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 6px;
+    background: #4CAF50;
+    color: #fff;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background 0.3s;
+    margin-bottom: 15px;
+  }
+
+  .btn-login:hover {
+    background: #45a049;
+  }
+
+  .btn-login:active {
+    background: #3d8b40;
+  }
+
+  .divider {
+    text-align: center;
+    margin: 20px 0;
+    color: #666;
+    position: relative;
+  }
+
+  .divider::before,
+  .divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 40%;
+    height: 1px;
+    background: #444;
+  }
+
+  .divider::before {
+    left: 0;
+  }
+
+  .divider::after {
+    right: 0;
+  }
+
+  .btn-signup {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #2196F3;
+    border-radius: 6px;
+    background: transparent;
+    color: #2196F3;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .btn-signup:hover {
+    background: #2196F3;
+    color: #fff;
+  }
+
+  .back-link {
+    text-align: center;
+    margin-top: 20px;
+  }
+
+  .back-link a {
+    color: #9C27B0;
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+
+  .back-link a:hover {
+    text-decoration: underline;
+  }
+
+  .message {
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    text-align: center;
+    font-size: 0.95rem;
+  }
+
+  .message.error {
+    background: rgba(244, 67, 54, 0.2);
+    border: 1px solid #f44336;
+    color: #ff6b6b;
+  }
+
+  .message.success {
+    background: rgba(76, 175, 80, 0.2);
+    border: 1px solid #4CAF50;
+    color: #66bb6a;
+  }
+
+  .message.info {
+    background: rgba(33, 150, 243, 0.2);
+    border: 1px solid #2196F3;
+    color: #64b5f6;
+  }
+
+  /* Responsive design */
+  @media (max-width: 480px) {
+    .login-box {
+      padding: 20px;
+    }
+
+    .login-title {
+      font-size: 1.5rem;
+    }
+
+    .form-group input,
+    .btn-login,
+    .btn-signup {
+      padding: 10px;
+      font-size: 0.95rem;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h2>Remote Control Car</h2>
+  <div class="status-bar">
+    <span>Login</span>
+  </div>
+</header>
+
+<main>
+  <div class="login-container">
+    <div class="login-box">
+      <h1 class="login-title">🔐 Welcome Back</h1>
+      <p class="login-subtitle">Sign in to control your car</p>
+
+
+      <form action="/login" method="POST">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input 
+            type="text" 
+            id="username" 
+            name="username" 
+            placeholder="Enter your username" 
+            required 
+            autocomplete="username"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input 
+            type="password" 
+            id="password" 
+            name="password" 
+            placeholder="Enter your password" 
+            required 
+            autocomplete="current-password"
+          >
+        </div>
+
+        <% if (typeof msg !== 'undefined' && msg) { %>
+          <div class="message <%= msg.includes('Success') ? 'success' : msg.includes('exist') || msg.includes('Wrong') ? 'error' : 'info' %>">
+            <%= msg %>
+          </div>
+        <% } %>
+
+        <button type="submit" class="btn-login">Login</button>
+      </form>
+
+      <div class="divider">OR</div>
+
+      <button type="button" class="btn-signup" onclick="window.location.href='/signup'">
+        Create New Account
+      </button>
+
+      <div class="back-link">
+        <a href="/">← Back to Home</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+
+
+</body>
+</html>

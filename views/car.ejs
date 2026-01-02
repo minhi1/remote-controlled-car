@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Remote Control Car</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <h2>Remote Control Car</h2>
+  <div class="status-bar">
+    <span><span class="status-dot"></span>Car</span>
+    <span id="camStatus"><span class="status-dot"></span>Cam</span>
+  </div>
+</header>
+
+<main>
+  <div class="camera-wrapper">
+    <img id="video">
+
+    <div class="dashboard">
+      <div class="mic-control" id="mic">
+        <span id="micIcon">🎤</span>
+        <div class="volume-bar" id="volBar">
+          <div class="volume-fill" id="volFill"></div>
+          <div class="volume-knob" id="volKnob"></div>
+        </div>
+      </div>
+      <button class="gallery-btn" onclick="toggleGallery()">📁 Gallery</button>
+    </div>
+  </div>
+
+  <div>
+    <div class="controls">
+      <button data-cmd="4">↖</button>
+      <button data-cmd="2">↑</button>
+      <button data-cmd="5">↗</button>
+      <div></div>
+      <button class="stop" data-cmd="1">STOP</button>
+      <div></div>
+      <button data-cmd="6">↙</button>
+      <button data-cmd="3">↓</button>
+      <button data-cmd="7">↘</button>
+    </div>
+
+    <button class="capture-btn" onclick="captureFrame()">Capture (C)</button>
+  </div>
+</main>
+
+<div class="gallery" id="gallery">
+  <button class="close-gallery" onclick="toggleGallery()">Close</button>
+  <div class="gallery-grid" id="galleryGrid"></div>
+</div>
+
+<script>
+
+
+const videoEl = document.getElementById('video');
+const camStatusEl = document.getElementById('camStatus');
+const buttons = document.querySelectorAll('[data-cmd]');
+const STOP_CMD = '1';
+
+let wsCar, wsCam;
+let pingStart = 0;
+let lastPing = 0;
+
+let micMuted = false;
+let micVolume = 70;
+
+const mic = document.getElementById('mic');
+const micIcon = document.getElementById('micIcon');
+const volBar = document.getElementById('volBar');
+const volFill = document.getElementById('volFill');
+const volKnob = document.getElementById('volKnob');
+
+function setVolume(v) {
+  micVolume = Math.max(0, Math.min(100, v));
+  volFill.style.width = micVolume + '%';
+  volKnob.style.left = micVolume + '%';
+}
+
+micIcon.onclick = e => {
+  e.stopPropagation();
+  micMuted = !micMuted;
+  mic.classList.toggle('muted', micMuted);
+  micIcon.textContent = micMuted ? '🔇' : '🎤';
+};
+
+let dragging = false;
+
+function updateFromX(x) {
+  const r = volBar.getBoundingClientRect();
+  setVolume(((x - r.left) / r.width) * 100);
+}
+
+volKnob.addEventListener('mousedown', e => { dragging = true; e.preventDefault(); });
+document.addEventListener('mousemove', e => dragging && updateFromX(e.clientX));
+document.addEventListener('mouseup', () => dragging = false);
+
+volKnob.addEventListener('touchstart', e => {
+  dragging = true;
+  updateFromX(e.touches[0].clientX);
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  if (!dragging) return;
+  updateFromX(e.touches[0].clientX);
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchend', () => dragging = false);
+
+setVolume(micVolume);
+
+function getWsUrl(path) {
+  return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path;
+}
+
+function setActive(cmd) {
+  buttons.forEach(b => b.classList.toggle('active', b.dataset.cmd === cmd));
+}
+
+function sendCmd(cmd) {
+  setActive(cmd);
+  if (wsCar?.readyState === 1) wsCar.send(cmd);
+}
+
+setActive(STOP_CMD);
+
+buttons.forEach(btn => {
+  btn.addEventListener('mousedown', () => sendCmd(btn.dataset.cmd));
+  btn.addEventListener('mouseup', () => sendCmd(STOP_CMD));
+  btn.addEventListener('mouseleave', () => sendCmd(STOP_CMD));
+});
+
+const keys = new Set();
+
+document.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.key.toLowerCase() === 'c') return captureFrame();
+  keys.add(e.key.toLowerCase());
+  handleKeys();
+});
+
+document.addEventListener('keyup', e => {
+  keys.delete(e.key.toLowerCase());
+  handleKeys();
+});
+
+function handleKeys() {
+  const w = keys.has('w') || keys.has('arrowup');
+  const s = keys.has('s') || keys.has('arrowdown');
+  const a = keys.has('a') || keys.has('arrowleft');
+  const d = keys.has('d') || keys.has('arrowright');
+
+  if (w && a) sendCmd('4');
+  else if (w && d) sendCmd('5');
+  else if (s && a) sendCmd('6');
+  else if (s && d) sendCmd('7');
+  else if (w) sendCmd('2');
+  else if (s) sendCmd('3');
+  else sendCmd(STOP_CMD);
+}
+
+function captureFrame() {
+  if (!videoEl.src) return;
+  const img = new Image();
+  img.src = videoEl.src;
+
+  const item = document.createElement('div');
+  item.className = 'gallery-item';
+  item.appendChild(img);
+  item.innerHTML += `<div class="tags">AI: road, obstacle, daylight</div>`;
+  document.getElementById('galleryGrid').prepend(item);
+}
+
+function updateCamStatus() {
+  camStatusEl.innerHTML =
+    `<span class="status-dot"></span>
+     ${new Date().toLocaleTimeString()} | ${lastPing}ms`;
+  requestAnimationFrame(updateCamStatus);
+}
+updateCamStatus();
+
+// INIT WEBSOCKET
+wsCar = new WebSocket(getWsUrl('/car'));
+
+wsCam = new WebSocket(getWsUrl('/cam'));
+wsCam.binaryType = 'arraybuffer';
+
+wsCam.onopen = () => {
+  setInterval(() => {
+    pingStart = performance.now();
+    wsCam.send('ping');
+  }, 2000);
+};
+
+wsCam.onmessage = e => {
+  if (e.data instanceof ArrayBuffer) {
+    const url = URL.createObjectURL(new Blob([e.data], { type: 'image/jpeg' }));
+    videoEl.src = url;
+    videoEl.onload = () => URL.revokeObjectURL(url);
+  } else if (e.data === 'pong') {
+    lastPing = Math.round(performance.now() - pingStart);
+  }
+};
+
+// GALLERY
+function toggleGallery() {
+  document.getElementById('gallery').classList.toggle('open');
+}
+</script>
+
+</body>
+</html>

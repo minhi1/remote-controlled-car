@@ -1,15 +1,21 @@
 Welcome to our IoT Project
 ==========================
 
-1. Overview
-===========
+Table of Contents
+=================
+
+ - [Overview](#overview)
+ - [Download](#download)
+
+Overview
+========
 
 Our product is a remote controlled car via web browser. 
 
 Wifi is compulsory to control the car and the range is not limited, you can still "communicate" with your car even in different network.
 
-2. Download
-===========
+Download
+========
 
 The source code can be cloned from this Github repository.
 ```bash

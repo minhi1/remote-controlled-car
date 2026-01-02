@@ -67,9 +67,11 @@ function requireNoAuthentication(req, res, next) {
   }
 
   if (typeof req.cookies.token === 'string') {
-    res.status(403);
-    res.send('you are already logged in.');
-    return;
+    if (verifyToken(req.cookies.token)) {
+      res.status(403);
+      res.send('you are already logged in.');
+      return;
+    }
   }
 
   next();

@@ -49,7 +49,6 @@ main {
 
 .camera-wrapper {
   width: 100%;
-  max-width: 640px;
   aspect-ratio: 4 / 3;
   background: #555;
   border-radius: 6px;

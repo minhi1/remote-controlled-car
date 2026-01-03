@@ -4,78 +4,14 @@ const WebSocket = require('ws');
 const path = require('path');
 const query = require('./db/query');
 const jwt = require('jsonwebtoken');
+const userAuth = require('./auth/user_auth');
 const cookieParser = require('cookie-parser');
 const PORT = process.env.PORT || 8080;
 const crypto = require('crypto');
-const db = require('./db/database');
 
 const app = express();
 
 const secretKey = process.env.SECRET_KEY;
-
-// Generate JWT token
-function generateToken(payload) {
-  // Use the jwt.sign method with the payload, secret key, and options (including algorithm)
-  const token = jwt.sign(payload, secretKey, {
-    algorithm: 'HS256', // The symmetric algorithm
-    expiresIn: '3h'     // Token expiration time
-  });
-  return token;
-}
-
-// Verify the JWT token
-function verifyToken(token) {
-  try {
-    // Use the jwt.verify method with the token and the same secret key
-    const decoded = jwt.verify(token, secretKey);
-    // return { success: true, decodedData: decoded };
-    return true;
-  } catch (err) {
-    // Handle specific errors like expiration, invalid signature, etc.
-    // return { success: false, message: err.message };
-    return false;
-  }
-  return true;
-}
-
-// A middleware that checks if req.cookies.token is string type
-// and verify using verifyToken() function
-function requireAuthentication(req, res, next) {
-    if (!req.cookies || !req.cookies.token) {
-      res.redirect('/login');
-      return;
-    }  
-
-    if (typeof req.cookies.token !== 'string') {
-        res.redirect('/login');
-        return;
-    }
-
-    if (verifyToken(req.cookies.token) === false) {
-        res.clearCookie('token').redirect('/login');
-        return;
-    }
-
-    next();
-}
-
-// Checks login based on data type of req.cookies.token
-function requireNoAuthentication(req, res, next) {
-  if (!req.cookies || !req.cookies.token) {
-    next();
-    return;
-  }
-
-  if (typeof req.cookies.token === 'string') {
-    if (verifyToken(req.cookies.token)) {
-      res.status(403);
-      res.send('you are already logged in.');
-      return;
-    }
-  }
-
-  next();
-}
 
 // Response with error
 function responseError(res, status_code = 500, msg = 'Internal Server Error') {
@@ -102,14 +38,14 @@ app.get(['/', '/index.html', '/index'], (req, res) => {
   let isLoggedIn = false;
   let username = '';
   
-  if (req.cookies && req.cookies.token && typeof req.cookies.token === 'string') {
-    if (verifyToken(req.cookies.token)) {
+  if (userAuth.validCookie(req)) {
+    if (userAuth.verifyToken(req.cookies.token)) {
       isLoggedIn = true;
       try {
         const decoded = jwt.decode(req.cookies.token);
         username = decoded['username'] || '{Username Not Found}';
       } catch (err) {
-        username = '{Username Error}';
+        username = `Username ${err}`;
       }
     }
   }
@@ -117,17 +53,17 @@ app.get(['/', '/index.html', '/index'], (req, res) => {
   res.render('index', { isLoggedIn, username });
 });
 
-app.get(['/car', '/car.html'], requireAuthentication, (req, res) => {
+app.get(['/car', '/car.html'], userAuth.requireAuthentication, (req, res) => {
   // res.sendFile(path.join(__dirname, 'car.html'));
   res.render('car');
 });
 
-app.get(['/login', '/login.html'], requireNoAuthentication, (req, res) => {
+app.get(['/login', '/login.html'], userAuth.requireNoAuthentication, (req, res) => {
   const msg = req.query.msg || '';
   res.render('login', { msg });
 });
 
-app.get(['/signup', '/signup.html'], requireNoAuthentication, (req, res) => {
+app.get(['/signup', '/signup.html'], userAuth.requireNoAuthentication, (req, res) => {
   const msg = req.query.msg || '';
   res.render('signup', { msg });
 });
@@ -137,7 +73,7 @@ app.get('/logout', (req, res) => {
   res.redirect('/');
 });
 
-app.post('/login', requireNoAuthentication, async (req, res) => {
+app.post('/login', userAuth.requireNoAuthentication, async (req, res) => {
   const username = req.body.username;
   const password = req.body.password;
 
@@ -164,11 +100,11 @@ app.post('/login', requireNoAuthentication, async (req, res) => {
 
   // Successful login
   const payload = {'sub': user['id'], username: user['username'], email: user['email']};
-  res.cookie('token', generateToken(payload), { httpOnly: true });
+  res.cookie('token', userAuth.generateToken(payload), { httpOnly: true });
   res.redirect('/');
 });
 
-app.post('/signup', requireNoAuthentication, async (req, res) => {
+app.post('/signup', userAuth.requireNoAuthentication, async (req, res) => {
   const email = req.body.email;  
   const username = req.body.username;
   const password = req.body.password;
@@ -215,7 +151,6 @@ app.post('/signup', requireNoAuthentication, async (req, res) => {
 
 // Create HTTP server from Express app
 const server = http.createServer(app);
-
 
 // ===== WS /car: controlling car =====
 const wssCar = new WebSocket.Server({ noServer: true });

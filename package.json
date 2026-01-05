@@ -16,6 +16,7 @@
     "ejs": "^3.1.10",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^7.0.12",
     "pg-promise": "^12.3.0",
     "ws": "^8.18.3"
   }

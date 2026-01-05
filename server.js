@@ -8,6 +8,7 @@ const userAuth = require('./auth/user_auth');
 const cookieParser = require('cookie-parser');
 const PORT = process.env.PORT || 8080;
 const crypto = require('crypto');
+const mailer = require('./service/mailer');
 
 const app = express();
 

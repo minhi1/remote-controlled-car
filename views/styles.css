@@ -47,14 +47,44 @@ main {
   flex-wrap: wrap;
 }
 
+/* --- LAYOUT GRID --- */
+.main-container {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: 1fr;
+  gap: 20px;
+  padding: 15px;
+  height: calc(100vh - 80px);
+  width: 100%; /* [FIX] Added width 100% to prevent collapse */
+  max-width: 100%;
+  margin: 0;
+  align-items: stretch;
+}
+
+.center-column { display: contents; }
+
+.controls-wrapper {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+}
+
 .camera-wrapper {
+  grid-column: 2;
+  grid-row: 1;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  height: 100%;
+  min-height: 0;
   background: #555;
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid #333;
   position: relative;
+  aspect-ratio: 4 / 3; /* [FIX] Restored aspect ratio to keep box open */
 }
 
 #video {
@@ -63,57 +93,22 @@ main {
   object-fit: cover;
 }
 
-.dashboard {
-  position: absolute;
-  bottom: 6px;
-  left: 6px;
-  right: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.mic-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(0,0,0,.6);
-  padding: 4px 8px;
-  border-radius: 6px;
-  user-select: none;
-}
-
-.mic-control.muted { opacity: 0.5; }
-
-.volume-bar {
-  position: relative;
-  width: 70px;
-  height: 6px;
-  background: #333;
-  border-radius: 3px;
-  touch-action: none;
-}
-
-.volume-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
+.activity-log {
+  grid-column: 3;
+  grid-row: 1;
+  position: static;
+  width: 300px;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   height: 100%;
-  background: #4CAF50;
-  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.volume-knob {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  cursor: pointer;
-}
-
+/* --- CONTROLS --- */
 .controls {
   display: grid;
   grid-template-columns: repeat(3, 64px);
@@ -140,18 +135,106 @@ button.active {
   box-shadow: inset 0 0 0 2px #aaa;
 }
 
-.capture-btn, .gallery-btn {
-  margin-top: 6px;
+.capture-btn, .upload-btn, .gallery-btn {
   width: 100%;
   max-width: 200px;
-  padding: 6px 0;
+  padding: 8px 0;
   font-size: 12px;
   border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  border: none;
 }
 
 .capture-btn { background: #2196F3; }
-.gallery-btn { background: #9C27B0; }
+.upload-btn { background: #ff9800; margin-top: 6px; }
+.gallery-btn { background: #9C27B0; width: auto; padding: 6px 10px; }
 
+/* Wrapper for hidden input */
+.upload-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* --- AUDIO OVERLAY --- */
+.audio-overlay {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 10px;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.audio-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.audio-btn.on {
+  background: rgba(76,175,80,0.85);
+  border-color: rgba(76,175,80,0.95);
+}
+
+.audio-btn.err {
+  background: rgba(244,67,54,0.80);
+  border-color: rgba(244,67,54,0.95);
+}
+
+/* --- DASHBOARD (Gallery Toggle) --- */
+.dashboard {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 40;
+  pointer-events: auto;
+}
+
+/* --- LOG STYLES --- */
+.activity-log h3 {
+  margin: 0 0 10px 0;
+  color: #4CAF50;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+#logContainer {
+  flex: 1;
+  overflow-y: auto;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 0;
+}
+
+.log-entry {
+  padding: 5px 8px;
+  margin-bottom: 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.log-entry .time { color: #888; font-size: 11px; }
+.log-entry .message { color: #fff; }
+.log-entry.info { border-left: 3px solid #2196F3; }
+.log-entry.success { border-left: 3px solid #4CAF50; }
+.log-entry.warning { border-left: 3px solid #FF9800; }
+.log-entry.error { border-left: 3px solid #f44336; }
+
+#logContainer::-webkit-scrollbar { width: 8px; }
+#logContainer::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+#logContainer::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.3); border-radius: 4px; }
+#logContainer::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.5); }
+
+/* --- GALLERY MODAL --- */
 .gallery {
   position: fixed;
   inset: 0;
@@ -159,6 +242,7 @@ button.active {
   display: none;
   padding: 20px;
   overflow-y: auto;
+  z-index: 9999;
 }
 
 .gallery.open { display: block; }
@@ -191,131 +275,10 @@ button.active {
   background: #f44336;
   padding: 6px;
   border-radius: 6px;
-}
-
-/* Desktop Layout: 3 columns - controls, camera, log */
-.main-container {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-rows: 1fr;
-  gap: 20px;
-  padding: 15px;
-  height: calc(100vh - 80px);
-  max-width: 100%;
-  margin: 0;
-  align-items: stretch;
-}
-
-/* Use display: contents to make children direct grid items */
-.center-column {
-  display: contents;
-}
-
-/* Controls wrapper as first column */
-.controls-wrapper {
-  grid-column: 1;
-  grid-row: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 15px;
-}
-
-.camera-wrapper {
-  grid-column: 2;
-  grid-row: 1;
   width: 100%;
-  height: 100%;
-  min-height: 0;
-  position: relative;
 }
 
-.controls {
-  display: grid;
-  grid-template-columns: repeat(3, 64px);
-  grid-template-rows: repeat(3, 48px);
-  gap: 6px;
-}
-
-.capture-btn {
-  width: 100%;
-  max-width: 200px;
-  padding: 8px 0;
-  font-size: 12px;
-}
-
-.activity-log {
-  grid-column: 3;
-  grid-row: 1;
-  position: static;
-  width: 300px;
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: 12px;
-  padding: 15px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.activity-log h3 {
-  margin: 0 0 10px 0;
-  color: #4CAF50;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-#logContainer {
-  flex: 1;
-  overflow-y: auto;
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  min-height: 0;
-}
-
-.log-entry {
-  padding: 5px 8px;
-  margin-bottom: 5px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.log-entry .time {
-  color: #888;
-  font-size: 11px;
-}
-
-.log-entry .message {
-  color: #fff;
-}
-
-.log-entry.info { border-left: 3px solid #2196F3; }
-.log-entry.success { border-left: 3px solid #4CAF50; }
-.log-entry.warning { border-left: 3px solid #FF9800; }
-.log-entry.error { border-left: 3px solid #f44336; }
-
-#logContainer::-webkit-scrollbar {
-  width: 8px;
-}
-
-#logContainer::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-#logContainer::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-}
-
-#logContainer::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
-}
-
-/* Mobile Layout: camera on top, controls and log on bottom */
+/* --- RESPONSIVE MEDIA QUERIES --- */
 @media (max-width: 768px) {
   .main-container {
     grid-template-columns: 1fr 1fr;
@@ -324,18 +287,13 @@ button.active {
     padding: 10px;
     gap: 10px;
   }
-
-  .center-column {
-    display: contents;
-  }
-
+  .center-column { display: contents; }
   .camera-wrapper {
     grid-column: 1 / -1;
     grid-row: 1;
     width: 100%;
     height: 100%;
   }
-
   .controls-wrapper {
     grid-column: 1;
     grid-row: 2;
@@ -345,19 +303,16 @@ button.active {
     justify-content: flex-start;
     align-items: flex-start;
   }
-
   .controls {
     grid-template-columns: repeat(3, minmax(50px, 64px));
     grid-template-rows: repeat(3, 40px);
     gap: 4px;
   }
-
-  .capture-btn {
+  .capture-btn, .upload-btn {
     width: 100%;
     max-width: none;
     padding: 8px 0;
   }
-
   .activity-log {
     grid-column: 2;
     grid-row: 2;
@@ -365,10 +320,7 @@ button.active {
     height: auto;
     max-height: 250px;
   }
-  
-  #logContainer {
-    max-height: 200px;
-  }
+  #logContainer { max-height: 200px; }
 }
 
 @media (max-width: 480px) {
@@ -377,17 +329,7 @@ button.active {
     grid-template-rows: repeat(3, 36px);
     gap: 3px;
   }
-  
-  button {
-    font-size: 14px;
-  }
-  
-  .activity-log h3 {
-    font-size: 14px;
-  }
-  
-  #logContainer {
-    font-size: 10px;
-    max-height: 150px;
-  }
+  button { font-size: 14px; }
+  .activity-log h3 { font-size: 14px; }
+  #logContainer { font-size: 10px; max-height: 150px; }
 }

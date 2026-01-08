@@ -1,320 +1,545 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Remote Control Car</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <title>Remote Control Car</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
+  <header>
+    <h2>Remote Control Car</h2>
+    <div class="status-bar">
+      <span><span class="status-dot"></span>Car</span>
+      <span id="camStatus"><span class="status-dot"></span>Cam</span>
+    </div>
+  </header>
 
-<header>
-  <h2>Remote Control Car</h2>
-  <div class="status-bar">
-    <span><span class="status-dot"></span>Car</span>
-    <span id="camStatus"><span class="status-dot"></span>Cam</span>
-  </div>
-</header>
+  <main>
+    <div class="main-container">
+      <div class="center-column">
+        
+        <div class="controls-wrapper">
+          <div class="controls">
+            <button data-cmd="4">↖</button>
+            <button data-cmd="2">↑</button>
+            <button data-cmd="5">↗</button>
 
-<main>
-  <div class="main-container">
-    <div class="center-column">
-      <div class="controls-wrapper">
-        <div class="controls">
-          <button data-cmd="4">↖</button>
-          <button data-cmd="2">↑</button>
-          <button data-cmd="5">↗</button>
-          <div></div>
-          <button class="stop" data-cmd="1">STOP</button>
-          <div></div>
-          <button data-cmd="6">↙</button>
-          <button data-cmd="3">↓</button>
-          <button data-cmd="7">↘</button>
-        </div>
-        <button class="capture-btn" onclick="captureFrame()">Capture (C)</button>
-        <div class="upload-wrapper">
-          <input type="file" id="file-input" style="display: none;">
-          <button id="uploadButton">Select a file</button>
-        </div>
-      </div>
+            <div></div>
+            <button class="stop" data-cmd="1">STOP</button>
+            <div></div>
 
-      <div class="camera-wrapper">
-        <img id="video">
-        <div class="dashboard">
-          <div class="mic-control" id="mic">
-            <span id="micIcon">🎤</span>
-            <div class="volume-bar" id="volBar">
-              <div class="volume-fill" id="volFill"></div>
-              <div class="volume-knob" id="volKnob"></div>
-            </div>
+            <button data-cmd="6">↙</button>
+            <button data-cmd="3">↓</button>
+            <button data-cmd="7">↘</button>
           </div>
-          <button class="gallery-btn" onclick="toggleGallery()">📁 Gallery</button>
+
+          <button class="capture-btn" onclick="captureFrame()">Capture (C)</button>
+          
+          <div class="upload-wrapper">
+            <input type="file" id="file-input" style="display: none;">
+            <button id="uploadButton" class="upload-btn">📂 Upload to AI</button>
+          </div>
+        </div>
+
+        <div class="camera-wrapper">
+          <img id="video" />
+
+          <div class="audio-overlay">
+            <button id="btnMicTx" class="audio-btn" title="Talk to Car">🎤</button>
+            <button id="btnSpkRx" class="audio-btn" title="Listen to Car">🔊</button>
+          </div>
+
+          <div class="dashboard">
+            <button class="gallery-btn" onclick="toggleGallery()">📁 Gallery</button>
+          </div>
+        </div>
+
+        <div class="activity-log">
+          <h3>Activity Log</h3>
+          <div id="logContainer"></div>
         </div>
       </div>
     </div>
+  </main>
 
-    <div class="activity-log">
-      <h3>Activity Log</h3>
-      <div id="logContainer"></div>
-    </div>
+  <div class="gallery" id="gallery">
+    <button class="close-gallery" onclick="toggleGallery()">Close</button>
+    <div class="gallery-grid" id="galleryGrid"></div>
   </div>
-</main>
 
-<div class="gallery" id="gallery">
-  <button class="close-gallery" onclick="toggleGallery()">Close</button>
-  <div class="gallery-grid" id="galleryGrid"></div>
-</div>
+  <script>
+    // --- CONFIGURATION ---
+    const STOP_CMD = 1;
+    const TARGETSR = 16000;
+    const FRAMEMS = 20; 
+    const BYTESPERSAMPLE = 2; // PCM16
+    const SAMPLESPERFRAME = TARGETSR * FRAMEMS / 1000; // 320
+    const BYTESPERFRAME = SAMPLESPERFRAME * BYTESPERSAMPLE; // 640
+    const PREBUFFERMS = 200;
+    const PREBUFFERBYTES = TARGETSR * PREBUFFERMS / 1000 * BYTESPERSAMPLE;
 
-<script>
-
-const videoEl = document.getElementById('video');
-const camStatusEl = document.getElementById('camStatus');
-const buttons = document.querySelectorAll('[data-cmd]');
-const uploadButton = document.getElementById('uploadButton');
-const fileInput = document.getElementById('file-input');
-const STOP_CMD = '1';
-
-// When upload button is clicked, trigger a click on the hidden file
-// input
-uploadButton.addEventListener('click', () => {
-  fileInput.click();
-});
-
-// Listen for when a file is selected and automatically submit
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length > 0) {
-    file = fileInput.files[0];
-    console.log('File selected:', file.name); 
+    // --- ELEMENTS ---
+    const videoEl = document.getElementById('video');
+    const camStatusEl = document.getElementById('camStatus');
+    const buttons = document.querySelectorAll('[data-cmd]');
+    const logContainer = document.getElementById('logContainer');
     
-    // Check if image type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image!');
-      return;
+    // Upload Elements 
+    const uploadButton = document.getElementById('uploadButton');
+    const fileInput = document.getElementById('file-input');
+
+    // Audio Elements
+    const btnMicTx = document.getElementById('btnMicTx');
+    const btnSpkRx = document.getElementById('btnSpkRx');
+
+    // State
+    let wsCar, wsCam;
+    let pingStart = 0;
+    let lastPing = 0;
+
+    // --- UTILS ---
+    function addLog(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.innerHTML = `<div class="time">${time}</div><div class="message">${message}</div>`;
+      logContainer.insertBefore(entry, logContainer.firstChild);
+      while (logContainer.children.length > 50) logContainer.removeChild(logContainer.lastChild);
     }
-   
-    // Send the image to backend (/upload-image endpoint)
-    const formData = new FormData();
-    formData.append('image', file);
 
-    fetch('http://localhost:8081/analyze-image', {
-      method: 'POST',
-      body: formData
-    })
-    .then(resp => {
-      if (!resp.ok) {
-        throw new Error('Error receiving AI response');
+    function getWsUrl(path) {
+      return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${path}`;
+    }
+
+    // --- 1. Upload Image to /analyze-image ---
+    uploadButton.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        addLog(`Selected file: ${file.name}`, 'info');
+
+        if (!file.type.startsWith('image/')) {
+          alert('Please select a valid image!');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        addLog('Sending to AI...', 'info');
+
+        fetch('http://localhost:8081/analyze-image', {
+          method: 'POST',
+          body: formData
+        })
+        .then(resp => {
+          if (!resp.ok) throw new Error('Error receiving AI response');
+          return resp.json();
+        })
+        .then(data => {
+          console.log(data);
+          addLog(`AI Response: ${JSON.stringify(data)}`, 'success');
+        })
+        .catch(err => {
+          console.error(err);
+          addLog(`AI Error: ${err.message}`, 'error');
+        });
       }
-      return resp.json();
-    })
-    .then(data => console.log(data))
-    .catch(err => console.log(err.message));
-  }
-});
+    });
 
-let wsCar, wsCam;
-let pingStart = 0;
-let lastPing = 0;
+    // --- 2. Car Control ---
+    function setActive(cmd) {
+      buttons.forEach(b => b.classList.toggle('active', b.dataset.cmd == cmd));
+    }
 
-// Activity logging
-const logContainer = document.getElementById('logContainer');
+    function sendCmd(cmd) {
+      setActive(cmd);
+      if (wsCar?.readyState === 1) wsCar.send(String(cmd));
 
-function addLog(message, type = 'info') {
-  const entry = document.createElement('div');
-  entry.className = `log-entry ${type}`;
-  const time = new Date().toLocaleTimeString();
-  entry.innerHTML = `<div class="time">${time}</div><div class="message">${message}</div>`;
-  logContainer.insertBefore(entry, logContainer.firstChild);
-  
-  // Keep only last 50 entries
-  while (logContainer.children.length > 50) {
-    logContainer.removeChild(logContainer.lastChild);
-  }
-}
+      const cmdNames = {
+        1: 'STOP', 2: 'Forward', 3: 'Backward',
+        4: 'Forward-Left', 5: 'Forward-Right',
+        6: 'Backward-Left', 7: 'Backward-Right'
+      };
+      // Only log non-stop commands to reduce spam, or keep all
+      if(cmd != STOP_CMD) addLog(`Cmd: ${cmdNames[cmd] || cmd}`, 'info');
+    }
 
-let micMuted = false;
-let micVolume = 70;
+    setActive(STOP_CMD);
 
-const mic = document.getElementById('mic');
-const micIcon = document.getElementById('micIcon');
-const volBar = document.getElementById('volBar');
-const volFill = document.getElementById('volFill');
-const volKnob = document.getElementById('volKnob');
+    buttons.forEach(btn => {
+      btn.addEventListener('mousedown', () => sendCmd(btn.dataset.cmd));
+      btn.addEventListener('mouseup', () => sendCmd(STOP_CMD));
+      btn.addEventListener('mouseleave', () => sendCmd(STOP_CMD));
+    });
 
-function setVolume(v) {
-  micVolume = Math.max(0, Math.min(100, v));
-  volFill.style.width = micVolume + '%';
-  volKnob.style.left = micVolume + '%';
-}
+    // Keyboard Control
+    const keys = new Set();
+    document.addEventListener('keydown', e => {
+      if (e.repeat) return;
+      if (e.key.toLowerCase() === 'c') return captureFrame();
+      keys.add(e.key.toLowerCase());
+      handleKeys();
+    });
+    document.addEventListener('keyup', e => {
+      keys.delete(e.key.toLowerCase());
+      handleKeys();
+    });
 
-micIcon.onclick = e => {
-  e.stopPropagation();
-  micMuted = !micMuted;
-  mic.classList.toggle('muted', micMuted);
-  micIcon.textContent = micMuted ? '🔇' : '🎤';
-};
+    function handleKeys() {
+      const w = keys.has('w') || keys.has('arrowup');
+      const s = keys.has('s') || keys.has('arrowdown');
+      const a = keys.has('a') || keys.has('arrowleft');
+      const d = keys.has('d') || keys.has('arrowright');
 
-let dragging = false;
+      if (w && a) sendCmd(4);
+      else if (w && d) sendCmd(5);
+      else if (s && a) sendCmd(6);
+      else if (s && d) sendCmd(7);
+      else if (w) sendCmd(2);
+      else if (s) sendCmd(3);
+      else sendCmd(STOP_CMD);
+    }
 
-function updateFromX(x) {
-  const r = volBar.getBoundingClientRect();
-  setVolume(((x - r.left) / r.width) * 100);
-}
+    // --- 3. Camera capture and Gallery ---
+    function captureFrame() {
+      if (!videoEl.src) return;
+      const img = new Image();
+      img.src = videoEl.src;
 
-volKnob.addEventListener('mousedown', e => { dragging = true; e.preventDefault(); });
-document.addEventListener('mousemove', e => dragging && updateFromX(e.clientX));
-document.addEventListener('mouseup', () => dragging = false);
+      const item = document.createElement('div');
+      item.className = 'gallery-item';
+      item.appendChild(img);
+      item.innerHTML += `<div class="tags">Captured Frame</div>`;
 
-volKnob.addEventListener('touchstart', e => {
-  dragging = true;
-  updateFromX(e.touches[0].clientX);
-}, { passive: false });
+      addLog('Frame captured', 'success');
+      document.getElementById('galleryGrid').prepend(item);
+    }
 
-document.addEventListener('touchmove', e => {
-  if (!dragging) return;
-  updateFromX(e.touches[0].clientX);
-  e.preventDefault();
-}, { passive: false });
+    function toggleGallery() {
+      document.getElementById('gallery').classList.toggle('open');
+    }
 
-document.addEventListener('touchend', () => dragging = false);
+    function updateCamStatus() {
+      camStatusEl.innerHTML = `<span class="status-dot"></span> ${lastPing}ms`;
+      requestAnimationFrame(updateCamStatus);
+    }
+    updateCamStatus();
 
-setVolume(micVolume);
+    // --- 4. Audio ---
+    
+    // >> Speaker RX (ESP32 -> Browser)
+    let spkRxOn = false;
+    let listenEnabled = false;
+    let wsMic = null;
+    let playCtx = null;
+    let playerNode = null;
+    let micQueue = [];
+    let micQueuedBytes = 0;
+    let pumpTimer = null;
+    let started = false;
 
-function getWsUrl(path) {
-  return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path;
-}
+    function resetMicBuffer() {
+      micQueue = [];
+      micQueuedBytes = 0;
+      started = false;
+      if (pumpTimer) clearInterval(pumpTimer);
+      pumpTimer = null;
+    }
 
-function setActive(cmd) {
-  buttons.forEach(b => b.classList.toggle('active', b.dataset.cmd === cmd));
-}
+    function popBytes(n) {
+      if (micQueuedBytes < n) return null;
+      const out = new Uint8Array(n);
+      let off = 0;
+      while (off < n && micQueue.length) {
+        const c = micQueue[0];
+        const take = Math.min(c.length, n - off);
+        out.set(c.subarray(0, take), off);
+        off += take;
+        if (take === c.length) micQueue.shift();
+        else micQueue[0] = c.subarray(take);
+        micQueuedBytes -= take;
+      }
+      return out;
+    }
 
-function sendCmd(cmd) {
-  setActive(cmd);
-  if (wsCar?.readyState === 1) {
-    wsCar.send(cmd);
-    const cmdNames = { '1': 'STOP', '2': 'Forward', '3': 'Backward', 
-                       '4': 'Forward-Left', '5': 'Forward-Right', '6': 'Backward-Left', 
-                       '7': 'Backward-Right' };
-    addLog(`Command sent: ${cmdNames[cmd] || cmd}`, 'info');
-  }
-}
+    async function ensurePlayGraph() {
+      if (playCtx) return;
+      playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGETSR });
 
-setActive(STOP_CMD);
+      const workletCode = `
+        class PcmPlayer extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this.q = [];
+            this.g = 1.0;
+            this.port.onmessage = (e) => {
+              if (e.data && e.data.pcm) this.q.push(e.data.pcm);
+              if (e.data && typeof e.data.gain === 'number') this.g = e.data.gain;
+              if (e.data && e.data.reset) this.q = [];
+            };
+          }
+          process(inputs, outputs) {
+            const out = outputs[0][0];
+            out.fill(0);
+            let o = 0;
+            while (o < out.length && this.q.length) {
+              const b = this.q[0];
+              const n = Math.min(b.length, out.length - o);
+              for (let i = 0; i < n; i++) out[o + i] = b[i] * this.g;
+              if (n === b.length) this.q.shift();
+              else this.q[0] = b.subarray(n);
+              o += n;
+            }
+            return true;
+          }
+        }
+        registerProcessor('pcm-player', PcmPlayer);
+      `;
+      const blobURL = URL.createObjectURL(new Blob([workletCode], { type: 'application/javascript' }));
+      await playCtx.audioWorklet.addModule(blobURL);
+      URL.revokeObjectURL(blobURL);
 
-buttons.forEach(btn => {
-  btn.addEventListener('mousedown', () => sendCmd(btn.dataset.cmd));
-  btn.addEventListener('mouseup', () => sendCmd(STOP_CMD));
-  btn.addEventListener('mouseleave', () => sendCmd(STOP_CMD));
-});
+      playerNode = new AudioWorkletNode(playCtx, 'pcm-player', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+      });
+      playerNode.connect(playCtx.destination);
+    }
 
-const keys = new Set();
+    async function startPump() {
+      if (pumpTimer) return;
+      await ensurePlayGraph();
+      if (playCtx.state !== 'running') await playCtx.resume();
 
-document.addEventListener('keydown', e => {
-  if (e.repeat) return;
-  if (e.key.toLowerCase() === 'c') return captureFrame();
-  keys.add(e.key.toLowerCase());
-  handleKeys();
-});
+      pumpTimer = setInterval(() => {
+        if (!listenEnabled) return;
+        if (!started) {
+          if (micQueuedBytes < PREBUFFERBYTES) return;
+          started = true;
+        }
+        const frame = popBytes(BYTESPERFRAME);
+        if (!frame) return;
 
-document.addEventListener('keyup', e => {
-  keys.delete(e.key.toLowerCase());
-  handleKeys();
-});
+        const s16 = new Int16Array(frame.buffer, frame.byteOffset, frame.byteLength / 2);
+        const f32 = new Float32Array(s16.length);
+        for (let i = 0; i < s16.length; i++) f32[i] = s16[i] / 32768;
 
-function handleKeys() {
-  const w = keys.has('w') || keys.has('arrowup');
-  const s = keys.has('s') || keys.has('arrowdown');
-  const a = keys.has('a') || keys.has('arrowleft');
-  const d = keys.has('d') || keys.has('arrowright');
+        playerNode.port.postMessage({ pcm: f32 });
+      }, FRAMEMS);
+    }
 
-  if (w && a) sendCmd('4');
-  else if (w && d) sendCmd('5');
-  else if (s && a) sendCmd('6');
-  else if (s && d) sendCmd('7');
-  else if (w) sendCmd('2');
-  else if (s) sendCmd('3');
-  else sendCmd(STOP_CMD);
-}
+    function connectMicWs() {
+      wsMic = new WebSocket(getWsUrl('/mic'));
+      wsMic.binaryType = 'arraybuffer';
+      wsMic.onopen = () => addLog('Speaker RX Connected', 'success');
+      wsMic.onerror = () => addLog('Speaker RX Error', 'error');
+      wsMic.onclose = () => {
+        addLog('Speaker RX Closed', 'warning');
+        wsMic = null;
+        resetMicBuffer();
+        if (spkRxOn) setTimeout(connectMicWs, 1000);
+      };
+      wsMic.onmessage = async (ev) => {
+        if (!(ev.data instanceof ArrayBuffer)) return;
+        const u8 = new Uint8Array(ev.data);
+        micQueue.push(u8);
+        micQueuedBytes += u8.length;
+        const MAXQUEUEBYTES = TARGETSR * 1.0 * BYTESPERSAMPLE;
+        while (micQueuedBytes > MAXQUEUEBYTES && micQueue.length) {
+          micQueuedBytes -= micQueue[0].length;
+          micQueue.shift();
+          started = false; 
+        }
+        if (listenEnabled) await startPump();
+      };
+    }
 
-function captureFrame() {
-  if (!videoEl.src) return;
-  const img = new Image();
-  img.src = videoEl.src;
+    function stopSpkRx() {
+      listenEnabled = false;
+      resetMicBuffer();
+      if (playerNode) {
+        try { playerNode.port.postMessage({ reset: true }); } catch {}
+        try { playerNode.disconnect(); } catch {}
+        playerNode = null;
+      }
+      if (playCtx) {
+        try { playCtx.close(); } catch {}
+        playCtx = null;
+      }
+      if (wsMic) {
+        try { wsMic.close(); } catch {}
+        wsMic = null;
+      }
+    }
 
-  // console.log("=== Capture Frame ===");
-  // console.log(img.src);
+    // >> Mic TX (Browser -> ESP32)
+    let micTxOn = false;
+    let talkEnabled = false;
+    let wsSpeaker = null;
+    let talkStream = null;
+    let talkCtx = null;
+    let talkNode = null;
+    let talkZeroGain = null;
 
-  const item = document.createElement('div');
-  addLog('Frame captured successfully', 'success');
-  item.className = 'gallery-item';
-  item.appendChild(img);
-  item.innerHTML += `<div class="tags">AI: road, obstacle, daylight</div>`;
-  document.getElementById('galleryGrid').prepend(item);
-}
+    function connectSpeakerWs() {
+      wsSpeaker = new WebSocket(getWsUrl('/speaker'));
+      wsSpeaker.binaryType = 'arraybuffer';
+      wsSpeaker.onopen = () => addLog('Mic TX Connected', 'success');
+      wsSpeaker.onerror = () => addLog('Mic TX Error', 'error');
+      wsSpeaker.onclose = () => {
+        addLog('Mic TX Closed', 'warning');
+        wsSpeaker = null;
+        if (micTxOn) setTimeout(connectSpeakerWs, 1000);
+      };
+    }
 
-function updateCamStatus() {
-  camStatusEl.innerHTML =
-    `<span class="status-dot"></span>
-     ${new Date().toLocaleTimeString()} | ${lastPing}ms`;
-  requestAnimationFrame(updateCamStatus);
-}
-updateCamStatus();
+    async function startTalk() {
+      if (!wsSpeaker || wsSpeaker.readyState !== WebSocket.OPEN) {
+        addLog('Mic TX WS not ready', 'warning');
+        return;
+      }
+      talkStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false
+      });
+      talkCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGETSR });
+      const src = talkCtx.createMediaStreamSource(talkStream);
+      const bufSize = 1024;
+      talkNode = talkCtx.createScriptProcessor(bufSize, 1, 1);
+      
+      talkZeroGain = talkCtx.createGain();
+      talkZeroGain.gain.value = 0;
 
-// INIT WEBSOCKET
-wsCar = new WebSocket(getWsUrl('/car'));
-wsCar.onopen = () => {
-  addLog('Car WebSocket connected', 'success');
-};
+      talkNode.onaudioprocess = (e) => {
+        if (!talkEnabled) return;
+        if (!wsSpeaker || wsSpeaker.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const pcm16 = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+          let s = Math.max(-1, Math.min(1, input[i]));
+          pcm16[i] = s < 0 ? s * 32768 : s * 32767;
+        }
+        wsSpeaker.send(pcm16.buffer);
+      };
 
-wsCar.onerror = () => {
-  addLog('Car WebSocket connection error', 'error');
-};
+      src.connect(talkNode);
+      talkNode.connect(talkZeroGain);
+      talkZeroGain.connect(talkCtx.destination);
+      talkEnabled = true;
+    }
 
-wsCar.onclose = () => {
-  addLog('Car WebSocket disconnected', 'warning');
-};
+    async function stopTalk() {
+      talkEnabled = false;
+      if (talkNode) { try { talkNode.disconnect(); } catch {} }
+      if (talkZeroGain) { try { talkZeroGain.disconnect(); } catch {} }
+      if (talkCtx) { try { await talkCtx.close(); } catch {} }
+      talkNode = null; talkZeroGain = null; talkCtx = null;
+      if (talkStream) {
+        try { talkStream.getTracks().forEach(t => t.stop()); } catch {}
+        talkStream = null;
+      }
+      if (wsSpeaker) {
+        try { wsSpeaker.close(); } catch {}
+        wsSpeaker = null;
+      }
+    }
 
-wsCam = new WebSocket(getWsUrl('/cam'));
-wsCam.binaryType = 'arraybuffer';
+    // >> Audio Toggle Buttons
+    btnSpkRx.onclick = async () => {
+      btnSpkRx.classList.remove('err');
+      if (spkRxOn) {
+        spkRxOn = false;
+        btnSpkRx.classList.remove('on');
+        stopSpkRx();
+        return;
+      }
+      try {
+        spkRxOn = true;
+        btnSpkRx.classList.add('on');
+        listenEnabled = true;
+        resetMicBuffer();
+        if (!wsMic) connectMicWs();
+        await ensurePlayGraph();
+        if (playCtx.state !== 'running') await playCtx.resume();
+        await startPump();
+      } catch (e) {
+        spkRxOn = false;
+        btnSpkRx.classList.remove('on');
+        btnSpkRx.classList.add('err');
+        stopSpkRx();
+        addLog(`Error: ${e.message}`, 'error');
+      }
+    };
 
-// Open connection on websocket wsCam
-wsCam.onopen = () => {
-  addLog('Camera WebSocket connected', 'success');
-  setInterval(() => {
-    pingStart = performance.now();
-    wsCam.send('ping');
-  }, 2000);
-};
+    btnMicTx.onclick = async () => {
+      btnMicTx.classList.remove('err');
+      if (micTxOn) {
+        micTxOn = false;
+        btnMicTx.classList.remove('on');
+        await stopTalk();
+        return;
+      }
+      try {
+        micTxOn = true;
+        btnMicTx.classList.add('on');
+        if (!wsSpeaker) connectSpeakerWs();
+        const t0 = performance.now();
+        while (!wsSpeaker || wsSpeaker.readyState !== WebSocket.OPEN) {
+          if (performance.now() - t0 > 3000) break;
+          await new Promise(r => setTimeout(r, 50));
+        }
+        await startTalk();
+      } catch (e) {
+        micTxOn = false;
+        btnMicTx.classList.remove('on');
+        btnMicTx.classList.add('err');
+        await stopTalk();
+        addLog(`Error: ${e.message}`, 'error');
+      }
+    };
 
-wsCam.onerror = () => {
-  addLog('Camera WebSocket connection error', 'error');
-};
+    window.addEventListener('beforeunload', () => {
+      try { stopSpkRx(); } catch {}
+      try { stopTalk(); } catch {}
+    });
 
-wsCam.onclose = () => {
-  addLog('Camera WebSocket disconnected', 'warning');
-};
 
-// WebSocket wsCam receives a message e
-wsCam.onmessage = e => { 
-  if (e.data instanceof ArrayBuffer) { 
-    // e is JPEG binary frame
-    const url = URL.createObjectURL(new Blob([e.data], { type: 'image/jpeg' }));
-    videoEl.src = url;
-    videoEl.onload = () => URL.revokeObjectURL(url);
-  } else if (e.data === 'ping') {
-    lastPing = Math.round(performance.now() - pingStart);
-  }
-};
+    // --- 5. Initialize WebSocket /car & /cam ---
+    wsCar = new WebSocket(getWsUrl('/car'));
+    wsCar.onopen = () => addLog('Car Connected', 'success');
+    wsCar.onerror = () => addLog('Car Connection Error', 'error');
+    wsCar.onclose = () => addLog('Car Disconnected', 'warning');
 
-// GALLERY
-function toggleGallery() {
-  document.getElementById('gallery').classList.toggle('open');
-  const isOpen = document.getElementById('gallery').classList.contains('open');
-  addLog(isOpen ? 'Gallery opened' : 'Gallery closed', 'info');
-}
+    wsCam = new WebSocket(getWsUrl('/cam'));
+    wsCam.binaryType = 'arraybuffer';
+    wsCam.onopen = () => {
+      addLog('Camera Connected', 'success');
+      setInterval(() => {
+        pingStart = performance.now();
+        wsCam.send('ping');
+      }, 2000);
+    };
+    wsCam.onerror = () => addLog('Cam Error', 'error');
+    wsCam.onclose = () => addLog('Cam Disconnected', 'warning');
 
-// Initial log
-addLog('Remote Control Car initialized', 'success');
-</script>
+    wsCam.onmessage = (e) => {
+      if (e.data instanceof ArrayBuffer) {
+        const url = URL.createObjectURL(new Blob([e.data], { type: 'image/jpeg' }));
+        videoEl.src = url;
+        videoEl.onload = () => URL.revokeObjectURL(url);
+      } else if (e.data === 'ping') {
+        lastPing = Math.round(performance.now() - pingStart);
+      }
+    };
 
+    addLog('System Initialized', 'success');
+  </script>
 </body>
 </html>

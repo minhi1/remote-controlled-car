@@ -131,24 +131,39 @@
         const formData = new FormData();
         formData.append('image', file);
 
-        addLog('Sending to AI...', 'info');
-
-        fetch('http://localhost:8081/analyze-image', {
+        addLog('Hosting image to ImgBB...');
+        fetch('http://localhost:8081/host-image', {
           method: 'POST',
           body: formData
         })
         .then(resp => {
-          if (!resp.ok) throw new Error('Error receiving AI response');
           return resp.json();
         })
         .then(data => {
+          console.log("ImgBB response!!!");
           console.log(data);
-          addLog(`AI Response: ${JSON.stringify(data)}`, 'success');
-        })
-        .catch(err => {
-          console.error(err);
-          addLog(`AI Error: ${err.message}`, 'error');
+          console.log("Get Image URL:", data.url);
+          // TODO: Add ImgBB response (view url) to log
         });
+
+        // addLog('Sending to AI...', 'info');
+
+        // fetch('http://localhost:8081/analyze-image', {
+        //   method: 'POST',
+        //   body: formData
+        // })
+        // .then(resp => {
+        //   if (!resp.ok) throw new Error('Error receiving AI response');
+        //   return resp.json();
+        // })
+        // .then(data => {
+        //   console.log(data);
+        //   addLog(`AI Response: ${JSON.stringify(data)}`, 'success');
+        // })
+        // .catch(err => {
+        //   console.error(err);
+        //   addLog(`AI Error: ${err.message}`, 'error');
+        // });
       }
     });
 

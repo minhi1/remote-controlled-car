@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 8080;
 const crypto = require('crypto');
 const multer = require('multer');
 const imagga = require('./service/img-detect');
+const imgbb = require('./service/host-img');
 
 const app = express();
 
@@ -65,6 +66,32 @@ app.get(['/car', '/car.html'], userAuth.requireAuthentication, (req, res) => {
   res.render('car');
 });
 
+app.post('/host-image', upload.single('image'), async (req, res) => {
+  const filePath = req.file.path;
+
+  if (!filePath) {
+    responseError(res, 400, 'File path to ImgBB empty');
+    return;
+  }
+
+  console.log("File path to ImgBB is", filePath);
+
+  var imgBBResponse = await imgbb.hostImage(filePath);
+  if (typeof(imgBBResponse) === 'string') {
+    if (imgBBResponse.includes('Error')) {
+      responseError(res, 500, imgBBResponse);
+      return;
+    }
+    return;
+  }
+  // console.log("Img BB Response:");
+  if (imgBBResponse.data && imgBBResponse.data.data && imgBBResponse.data.data.url) {
+    res.send(imgBBResponse.data.data);
+  } else {
+    responseError(res, 500, 'Fail ImgBB Request');
+  } 
+});
+
 app.post('/analyze-image', upload.single('image'), async (req, res) => {
   const filePath = req.file.path;
 
@@ -75,7 +102,7 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
 
   console.log("File path to Imagga is", filePath);
 
-  imaggaResp = await imagga.requestImagga(filePath);
+  var imaggaResp = await imagga.requestImagga(filePath);
   
   if (typeof(imaggaResp) === 'string') {
     if (imaggaResp.includes('Error')) {

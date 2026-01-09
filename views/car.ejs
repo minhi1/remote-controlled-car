@@ -196,11 +196,11 @@
 
           // Show the box
           resultBox.style.display = 'block';
-          
+
         } else {
           resultBox.innerText = "No objects detected.";
           resultBox.style.display = 'block';
-        }               
+        }
 
         addLog("Analysis received", "success");
 
@@ -383,7 +383,7 @@
       };
 
       addImageToGallery(img);
-      addLog('Frame captured', 'success'); 
+      addLog('Frame captured', 'success');
     }
 
     function toggleGallery() {
@@ -694,13 +694,26 @@
     wsCam.onerror = () => addLog('Cam Error', 'error');
     wsCam.onclose = () => addLog('Cam Disconnected', 'warning');
 
+    let currentCamUrl = null;
+
     wsCam.onmessage = (e) => {
       if (e.data instanceof ArrayBuffer) {
         const blob = new Blob([e.data], { type: 'image/jpeg' });
-        const reader = new FileReader();
-        reader.onload = () => {
-          videoEl.src = reader.result;
+        const newUrl = URL.createObjectURL(blob);
+        videoEl.src = newUrl;
+        videoEl.onload = () => {
+          if (currentCamUrl) URL.revokeObjectURL(currentCamUrl); // Revoke previous
+          currentCamUrl = newUrl;  // Update reference
         };
+        videoEl.onerror = () => {
+          addLog('Failed to load camera frame', 'error');
+          URL.revokeObjectURL(newUrl); // Clean up on error
+        };
+        // const blob = new Blob([e.data], { type: 'image/jpeg' });
+        // const reader = new FileReader();
+        // reader.onload = () => {
+        //  videoEl.src = reader.result;
+        // };
         reader.readAsDataURL(blob);
         // const url = URL.createObjectURL(new Blob([e.data], { type: 'image/jpeg' }));
         // videoEl.src = url;
@@ -723,7 +736,7 @@
       </button>
 
       <div id="analysisResult" class="analysis-result"></div>
-    </div>   
+    </div>
     <!-- <img class="modal-content" id="fullImage"> -->
   </div>
 </body>

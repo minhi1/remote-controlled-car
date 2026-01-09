@@ -580,20 +580,7 @@ wssSpeaker.on("connection", (ws) => {
 // Pattern này đúng theo ví dụ "multiple servers sharing a single HTTP server" của ws
 server.on("upgrade", (request, socket, head) => {
   const { url } = request;
-  const token = url.searchParams.get("token");
-
-  let user;
-
-  // try {
-  //   // user = jwt.verify(token, secretKey);
-  //   const decode = jwt.decode(token);
-  //   const userId = decode.sub;
-  //   console.log("user id (tho tai):", userId);
-  // } catch {
-  //   socket.destroy();
-  //   return;
-  // }
-
+  
   if (url === "/car") {
     wssCar.handleUpgrade(request, socket, head, (ws) =>
       wssCar.emit("connection", ws, request),

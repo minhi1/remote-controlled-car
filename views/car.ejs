@@ -677,11 +677,7 @@
 
 
     // --- 5. Initialize WebSocket /car & /cam ---
-    const token = document.cookie
-    .split("; ")
-    .find(r => r.startsWith("token="))
-    ?.split("=")[1];
-    wsCar = new WebSocket(getWsUrl('/car?token=${encodeURIComponent(token)}'));
+    wsCar = new WebSocket(getWsUrl('/car'));
     wsCar.onopen = () => addLog('Car Connected', 'success');
     wsCar.onerror = () => addLog('Car Connection Error', 'error');
     wsCar.onclose = () => addLog('Car Disconnected', 'warning');

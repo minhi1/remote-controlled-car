@@ -407,20 +407,6 @@ wssCar.on("connection", (ws) => {
 
   ws.on("close", async () => {
     console.log("WS /car client disconnected");
-    if (ws === carSocket) {
-      carSocket = null;
-      console.log("Car disconnected");
-      if (user?.email) {
-        await mailer.sendMail({
-          to: user.email,
-          subject: "Car Connection Lost",
-          text: `Warning,
-            The car has lost connection to the server.
-            Time: ${new Date().toLocaleString()}
-            Please check power, WiFi, or network coverage.`,
-        });
-      }
-    }
   });
 
   ws.on("error", (err) => {

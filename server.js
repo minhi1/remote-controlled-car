@@ -1,23 +1,24 @@
-const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
-const path = require('path');
-const query = require('./db/query');
-const jwt = require('jsonwebtoken');
-const userAuth = require('./auth/user_auth');
-const cookieParser = require('cookie-parser');
+const express = require("express");
+const http = require("http");
+const WebSocket = require("ws");
+const path = require("path");
+const query = require("./db/query");
+const jwt = require("jsonwebtoken");
+const userAuth = require("./auth/user_auth");
+const cookieParser = require("cookie-parser");
 const PORT = process.env.PORT || 8080;
-const crypto = require('crypto');
-const multer = require('multer');
-const imagga = require('./service/img-detect');
-const imgbb = require('./service/host-img');
+const crypto = require("crypto");
+const multer = require("multer");
+const imagga = require("./service/img-detect");
+const imgbb = require("./service/host-img");
+const mailer = require("./service/mailer");
 
 const app = express();
 
 const secretKey = process.env.SECRET_KEY;
 
 // Response with error
-function responseError(res, status_code = 500, msg = 'Internal Server Error') {
+function responseError(res, status_code = 500, msg = "Internal Server Error") {
   res.status(status_code).send(msg);
 }
 
@@ -27,10 +28,10 @@ const upload = multer({
 });
 
 // Set EJS as template engine
-app.set('view engine', 'ejs');
+app.set("view engine", "ejs");
 
 // Serve static files from views directory
-app.use(express.static(path.join(__dirname, 'views')));
+app.use(express.static(path.join(__dirname, "views")));
 
 // Parse JSON bodies
 app.use(express.json());
@@ -42,145 +43,171 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Routes
-app.get(['/', '/index.html', '/index'], (req, res) => {
+app.get(["/", "/index.html", "/index"], (req, res) => {
   let isLoggedIn = false;
-  let username = '';
-  
+  let username = "";
+
   if (userAuth.validCookie(req)) {
     if (userAuth.verifyToken(req.cookies.token)) {
       isLoggedIn = true;
       try {
         const decoded = jwt.decode(req.cookies.token);
-        username = decoded['username'] || '{Username Not Found}';
+        username = decoded["username"] || "{Username Not Found}";
       } catch (err) {
         username = `Username ${err}`;
       }
     }
   }
 
-  res.render('index', { isLoggedIn, username });
+  res.render("index", { isLoggedIn, username });
 });
 
-app.get(['/car', '/car.html'], userAuth.requireAuthentication, (req, res) => {
+app.get(["/car", "/car.html"], userAuth.requireAuthentication, (req, res) => {
   // res.sendFile(path.join(__dirname, 'car.html'));
-  res.render('car');
+  res.render("car");
 });
 
-app.post('/host-image-b64', userAuth.requireAuthentication, async (req, res) => {
-  try {
-    const { image } = req.body; // Get the image base64 data
-    
-    if (!image) {
-      responseError(res, 400, 'Image data NULL');
+app.post(
+  "/host-image-b64",
+  userAuth.requireAuthentication,
+  async (req, res) => {
+    try {
+      const { image } = req.body; // Get the image base64 data
+
+      if (!image) {
+        responseError(res, 400, "Image data NULL");
+        return;
+      }
+
+      // 1. Upload to ImgBB
+      const imgBBResponse = await imgbb.hostImageBase64(image);
+
+      if (typeof imgBBResponse === "string") {
+        if (imgBBResponse.includes("Error")) {
+          responseError(res, 500, imgBBResponse);
+          return;
+        }
+        return;
+      }
+
+      console.log("imgbb response:", imgBBResponse);
+      console.log("imgbb data", imgBBResponse.data);
+
+      if (imgBBResponse.data && imgBBResponse.data.url) {
+        console.log("Parsing ImgBB data");
+        const publicURL = imgBBResponse.data.url;
+        const decoded = jwt.verify(req.cookies.token, secretKey);
+        const userId = decoded.sub;
+        console.log("public url:", publicURL);
+        console.log("userId:", userId);
+        const response = await query.addUserImage(
+          userId,
+          publicURL,
+          `image-name.jpeg`,
+        );
+        console.log("response:", response);
+        if (typeof response === "string") {
+          if (response.includes("Error")) {
+            responseError(res, 500, response);
+            return;
+          }
+        }
+        console.log("Successfully hosting image to ImgBB");
+        res.send(imgBBResponse.data);
+      } else {
+        console.log("Fail to host image to imgBB");
+        responseError(res, 500, "Fail ImgBB Request");
+        return;
+      }
+    } catch (error) {
+      console.log("Error: uploading failed @@", error);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  },
+);
+
+app.post(
+  "/host-image",
+  userAuth.requireAuthentication,
+  upload.single("image"),
+  async (req, res) => {
+    const filePath = req.file.path;
+
+    if (!filePath) {
+      responseError(res, 400, "File path to ImgBB empty");
       return;
     }
 
-    // 1. Upload to ImgBB
-    const imgBBResponse = await imgbb.hostImageBase64(image);
-    
-    if (typeof(imgBBResponse) === 'string') {
-      if (imgBBResponse.includes('Error')) {
+    console.log("File path to ImgBB is", filePath);
+
+    var imgBBResponse = await imgbb.hostImage(filePath);
+    if (typeof imgBBResponse === "string") {
+      if (imgBBResponse.includes("Error")) {
         responseError(res, 500, imgBBResponse);
         return;
       }
       return;
     }
-
-    console.log('imgbb response:', imgBBResponse);
-    console.log('imgbb data', imgBBResponse.data);
-
-    if (imgBBResponse.data && imgBBResponse.data.url) {
-      console.log("Parsing ImgBB data");
-      const publicURL = imgBBResponse.data.url;
-      const decoded = jwt.verify(req.cookies.token, secretKey);
-      const userId = decoded.sub;
-      console.log("public url:", publicURL);
-      console.log("userId:",userId);
-      const response = await query.addUserImage(userId, publicURL, `image-name.jpeg`);
-      console.log("response:",response);
-      if (typeof(response) === 'string') {
-        if (response.includes('Error')) {
-          responseError(res, 500, response);
-          return;
-        }
-      }
-      console.log("Successfully hosting image to ImgBB");
-      res.send(imgBBResponse.data);
+    // console.log("Img BB Response:");
+    if (
+      imgBBResponse.data &&
+      imgBBResponse.data.data &&
+      imgBBResponse.data.data.url
+    ) {
+      res.send(imgBBResponse.data.data);
     } else {
-      console.log("Fail to host image to imgBB");
-      responseError(res, 500, 'Fail ImgBB Request');
-      return;
-    } 
-  } catch (error) {
-    console.log("Error: uploading failed @@", error);
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-app.post('/host-image', userAuth.requireAuthentication, upload.single('image'), async (req, res) => {
-  const filePath = req.file.path;
-
-  if (!filePath) {
-    responseError(res, 400, 'File path to ImgBB empty');
-    return;
-  }
-
-  console.log("File path to ImgBB is", filePath);
-
-  var imgBBResponse = await imgbb.hostImage(filePath);
-  if (typeof(imgBBResponse) === 'string') {
-    if (imgBBResponse.includes('Error')) {
-      responseError(res, 500, imgBBResponse);
-      return;
+      responseError(res, 500, "Fail ImgBB Request");
     }
-    return;
-  }
-  // console.log("Img BB Response:");
-  if (imgBBResponse.data && imgBBResponse.data.data && imgBBResponse.data.data.url) {
-    res.send(imgBBResponse.data.data);
-  } else {
-    responseError(res, 500, 'Fail ImgBB Request');
-  } 
-});
+  },
+);
 
-app.post('/analyze-image', userAuth.requireAuthentication, upload.single('image'), async (req, res) => {
-  let imageInput = null;
+app.post(
+  "/analyze-image",
+  userAuth.requireAuthentication,
+  upload.single("image"),
+  async (req, res) => {
+    let imageInput = null;
 
-  // 1. CHECK: Is it a Base64 string? (Sent as JSON body)
-  if (req.body && req.body.image) {
-    const type = req.body.image.startsWith('http') ? 'URL' : 'Base64';
-    console.log(`Received ${type} Image for analysis`);
-    imageInput = req.body.image;
-  } 
-  // 2. CHECK: Is it a File Upload? (Sent as Multipart/Multer)
-  else if (req.file && req.file.path) {
-    console.log("Received File Path for analysis:", req.file.path);
-    imageInput = req.file.path;
-  }
-
-  // 3. Validation
-  if (!imageInput) {
-    return responseError(res, 400, 'No image data received (checked body and file)');
-  }
-
-  // 4. Call Imagga
-  // (Assuming you updated requestImagga to handle Base64 as shown in previous steps)
-  try {
-    console.log("image input:", imageInput);
-    var imaggaResp = await imagga.requestImagga(imageInput);
-
-    console.log("Imagga Response:", imaggaResp);
-
-    if (typeof(imaggaResp) === 'string' && imaggaResp.includes('Error')) {
-      return responseError(res, 500, imaggaResp);
+    // 1. CHECK: Is it a Base64 string? (Sent as JSON body)
+    if (req.body && req.body.image) {
+      const type = req.body.image.startsWith("http") ? "URL" : "Base64";
+      console.log(`Received ${type} Image for analysis`);
+      imageInput = req.body.image;
+    }
+    // 2. CHECK: Is it a File Upload? (Sent as Multipart/Multer)
+    else if (req.file && req.file.path) {
+      console.log("Received File Path for analysis:", req.file.path);
+      imageInput = req.file.path;
     }
 
-    res.send(imaggaResp);
-  } catch (err) {
-    console.error(err);
-    responseError(res, 500, "Internal Server Error during Analysis");
-  }
-});
+    // 3. Validation
+    if (!imageInput) {
+      return responseError(
+        res,
+        400,
+        "No image data received (checked body and file)",
+      );
+    }
+
+    // 4. Call Imagga
+    // (Assuming you updated requestImagga to handle Base64 as shown in previous steps)
+    try {
+      console.log("image input:", imageInput);
+      var imaggaResp = await imagga.requestImagga(imageInput);
+
+      console.log("Imagga Response:", imaggaResp);
+
+      if (typeof imaggaResp === "string" && imaggaResp.includes("Error")) {
+        return responseError(res, 500, imaggaResp);
+      }
+
+      res.send(imaggaResp);
+    } catch (err) {
+      console.error(err);
+      responseError(res, 500, "Internal Server Error during Analysis");
+    }
+  },
+);
 
 // app.post('/analyze-image', userAuth.requireAuthentication, upload.single('image'), async (req, res) => {
 //   const filePath = req.file.path;
@@ -193,7 +220,7 @@ app.post('/analyze-image', userAuth.requireAuthentication, upload.single('image'
 //   console.log("File path to Imagga is", filePath);
 
 //   var imaggaResp = await imagga.requestImagga(filePath);
-  
+
 //   if (typeof(imaggaResp) === 'string') {
 //     if (imaggaResp.includes('Error')) {
 //       responseError(res, 500, imaggaResp);
@@ -204,20 +231,20 @@ app.post('/analyze-image', userAuth.requireAuthentication, upload.single('image'
 //   if (imaggaResp) res.send(imaggaResp);
 // });
 
-app.get('/get-images', userAuth.requireAuthentication, async (req, res) => {
+app.get("/get-images", userAuth.requireAuthentication, async (req, res) => {
   const decoded = jwt.verify(req.cookies.token, secretKey);
   console.log("User id when requesting image:", decoded);
   const userId = decoded.sub;
   console.log("user id:", userId);
   if (!userId) {
-    responseError(res, 400, 'Invalid user id');
+    responseError(res, 400, "Invalid user id");
     return;
   }
-  
+
   const images = await query.getUserImages(userId);
-  if (typeof(images) === 'string') {
-    if (images.includes('Error')) {
-      responseError(res); 
+  if (typeof images === "string") {
+    if (images.includes("Error")) {
+      responseError(res);
       return;
     }
   }
@@ -225,58 +252,91 @@ app.get('/get-images', userAuth.requireAuthentication, async (req, res) => {
   res.send(images);
 });
 
-app.get(['/login', '/login.html'], userAuth.requireNoAuthentication, (req, res) => {
-  const msg = req.query.msg || '';
-  res.render('login', { msg });
-});
+app.get(
+  ["/login", "/login.html"],
+  userAuth.requireNoAuthentication,
+  (req, res) => {
+    const msg = req.query.msg || "";
+    res.render("login", { msg });
+  },
+);
 
-app.post('/login', userAuth.requireNoAuthentication, async (req, res) => {
+app.post("/login", userAuth.requireNoAuthentication, async (req, res) => {
   const username = req.body.username;
   const password = req.body.password;
 
   if (!username || !password) {
-    responseError(res, 400, 'Username/Password is empty');
+    responseError(res, 400, "Username/Password is empty");
     return;
   }
 
   const user = await query.getUserByUsername(username);
 
   if (!user) {
-    res.render('login', { msg: 'User does not exist!' });
+    res.render("login", { msg: "User does not exist!" });
     return;
   }
 
-  const passInputHash = crypto.createHash('sha256').update(password).digest('hex');
+  const passInputHash = crypto
+    .createHash("sha256")
+    .update(password)
+    .digest("hex");
 
-  if (!crypto.timingSafeEqual(Buffer.from(passInputHash), Buffer.from(user['password']))) {
-    res.render('login', { msg: 'Wrong username or password' });
+  if (
+    !crypto.timingSafeEqual(
+      Buffer.from(passInputHash),
+      Buffer.from(user["password"]),
+    )
+  ) {
+    res.render("login", { msg: "Wrong username or password" });
     return;
   }
 
   // Successful login
-  const payload = {'sub': user['id'], username: user['username'], email: user['email']};
-  res.cookie('token', userAuth.generateToken(payload), { httpOnly: true });
-  res.redirect('/');
+  const payload = {
+    sub: user["id"],
+    username: user["username"],
+    email: user["email"],
+  };
+  res.cookie("token", userAuth.generateToken(payload), { httpOnly: true });
+  // Mail notification
+  await mailer.sendMail({
+    to: user.email,
+    subject: "Car Control Login Alert",
+    text: `Hello ${user.username},
+
+  Your account has logged in successfully.
+
+  Time: ${new Date().toLocaleString()}
+
+  If this was not you, please secure your account immediately.`,
+  });
+
+  res.redirect("/");
 });
 
-app.get(['/signup', '/signup.html'], userAuth.requireNoAuthentication, (req, res) => {
-  const msg = req.query.msg || '';
-  res.render('signup', { msg });
-});
+app.get(
+  ["/signup", "/signup.html"],
+  userAuth.requireNoAuthentication,
+  (req, res) => {
+    const msg = req.query.msg || "";
+    res.render("signup", { msg });
+  },
+);
 
-app.post('/signup', userAuth.requireNoAuthentication, async (req, res) => {
-  const email = req.body.email;  
+app.post("/signup", userAuth.requireNoAuthentication, async (req, res) => {
+  const email = req.body.email;
   const username = req.body.username;
   const password = req.body.password;
 
   if (!email || !username || !password) {
-    responseError(res, 400, 'Credentials are empty');
+    responseError(res, 400, "Credentials are empty");
     return;
   }
 
   const pattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   if (!pattern.test(email)) {
-    res.render('signup', { msg: 'Email format uncorrect' });
+    res.render("signup", { msg: "Email format uncorrect" });
     return;
   }
 
@@ -285,53 +345,73 @@ app.post('/signup', userAuth.requireNoAuthentication, async (req, res) => {
   var user = await query.getUserByUsername(username);
 
   if (user) {
-    res.render('signup', { msg: 'Username already exist!' });
+    res.render("signup", { msg: "Username already exist!" });
     return;
-  } 
+  }
 
   user = await query.getUserByUsername(email);
 
   if (user) {
-    res.render('signup', { msg: 'Email already exist!' });
+    res.render("signup", { msg: "Email already exist!" });
     return;
   }
 
-  const passInputHash = crypto.createHash('sha256').update(password).digest('hex');
+  const passInputHash = crypto
+    .createHash("sha256")
+    .update(password)
+    .digest("hex");
 
   const resp = await query.addUser(email, username, passInputHash);
 
   if (resp.includes("Cannot")) {
-    res.render('signup', { msg: 'Error creating new account' });
+    res.render("signup", { msg: "Error creating new account" });
     return;
   }
 
   // Successfully creating new account
-  res.redirect('/login');
+  res.redirect("/login");
 });
 
-app.get('/logout', (req, res) => {
-  res.clearCookie('token');
-  res.redirect('/');
+app.get("/logout", (req, res) => {
+  res.clearCookie("token");
+  res.redirect("/");
 });
-
 
 // Create HTTP server from Express app
 const server = http.createServer(app);
+
+function getUserFromWsRequest(request) {
+  try {
+    const cookies = request.headers.cookie;
+    if (!cookies) return null;
+
+    const token = cookies
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith("token="))
+      ?.split("=")[1];
+
+    if (!token) return null;
+    return jwt.decode(token);
+  } catch {
+    return null;
+  }
+}
 
 // ===== WS /car: controlling car =====
 const wssCar = new WebSocket.Server({ noServer: true });
 let carSocket = null;
 
-wssCar.on('connection', (ws) => {
-  console.log('WS client connected to /car');
+wssCar.on("connection", (ws) => {
+  console.log("WS client connected to /car");
 
-  ws.on('message', (msg) => {
+  ws.on("message", (msg) => {
     const text = msg.toString();
-    console.log('WS /car message:', text);
+    console.log("WS /car message:", text);
 
-    if (text === 'type:car') {
+    if (text === "type:car") {
       carSocket = ws;
-      console.log('Registered car client');
+      console.log("Registered car client");
       return;
     }
 
@@ -343,36 +423,46 @@ wssCar.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
-    console.log('WS /car client disconnected');
+  ws.on("close", async () => {
+    console.log("WS /car client disconnected");
     if (ws === carSocket) {
       carSocket = null;
-      console.log('Car disconnected');
+      console.log("Car disconnected");
+      if (user?.email) {
+        await mailer.sendMail({
+          to: user.email,
+          subject: "Car Connection Lost",
+          text: `Warning,
+            The car has lost connection to the server.
+            Time: ${new Date().toLocaleString()}
+            Please check power, WiFi, or network coverage.`,
+        });
+      }
     }
   });
 
-  ws.on('error', (err) => {
-    console.error('WS /car error:', err);
+  ws.on("error", (err) => {
+    console.error("WS /car error:", err);
   });
 });
 
 // ===== WS /cam: stream video from ESP32-CAM =====
 const wssCam = new WebSocket.Server({ noServer: true });
 
-let camSocket = null;          // ESP32‑CAM
-const viewers = new Set();     // các browser xem video
+let camSocket = null; // ESP32‑CAM
+const viewers = new Set(); // các browser xem video
 
-wssCam.on('connection', (ws, request) => {
-  console.log('WS client connected to /cam');
+wssCam.on("connection", (ws, request) => {
+  console.log("WS client connected to /cam");
 
-  ws.on('message', (data, isBinary) => {
+  ws.on("message", (data, isBinary) => {
     if (!isBinary) {
       // ESP32-CAM gửi "type:cam" để đăng ký
       const text = data.toString();
-      console.log('WS /cam text:', text);
-      if (text === 'type:cam') {
+      console.log("WS /cam text:", text);
+      if (text === "type:cam") {
         camSocket = ws;
-        console.log('Registered cam client');
+        console.log("Registered cam client");
       }
       return;
     }
@@ -388,17 +478,17 @@ wssCam.on('connection', (ws, request) => {
     }
   });
 
-  ws.on('close', () => {
-    console.log('WS /cam client disconnected');
+  ws.on("close", () => {
+    console.log("WS /cam client disconnected");
     if (ws === camSocket) {
       camSocket = null;
-      console.log('Camera disconnected');
+      console.log("Camera disconnected");
     }
     viewers.delete(ws);
   });
 
-  ws.on('error', (err) => {
-    console.error('WS /cam error:', err);
+  ws.on("error", (err) => {
+    console.error("WS /cam error:", err);
   });
 
   // Mặc định: nếu chưa gửi "type:cam", coi ws này là viewer
@@ -407,18 +497,18 @@ wssCam.on('connection', (ws, request) => {
 
 // ============== WS /mic: ESP32-S3 mic -> broadcast lên web ==============
 const wssMic = new WebSocket.Server({ noServer: true });
-let micSocket = null;           // ESP32-S3 mic sender
+let micSocket = null; // ESP32-S3 mic sender
 const micListeners = new Set(); // các browser nghe mic
 
-wssMic.on('connection', (ws) => {
-  console.log('WS client connected to /mic');
+wssMic.on("connection", (ws) => {
+  console.log("WS client connected to /mic");
 
-  ws.on('message', (data, isBinary) => {
+  ws.on("message", (data, isBinary) => {
     if (!isBinary) {
       const text = data.toString();
-      if (text === 'type:mic') {
+      if (text === "type:mic") {
         micSocket = ws;
-        console.log('Registered mic client');
+        console.log("Registered mic client");
       }
       return;
     }
@@ -432,16 +522,16 @@ wssMic.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
-    console.log('WS /mic client disconnected');
+  ws.on("close", () => {
+    console.log("WS /mic client disconnected");
     if (ws === micSocket) {
       micSocket = null;
-      console.log('Mic source disconnected');
+      console.log("Mic source disconnected");
     }
     micListeners.delete(ws);
   });
 
-  ws.on('error', (err) => console.error('WS /mic error:', err));
+  ws.on("error", (err) => console.error("WS /mic error:", err));
 
   // Nếu không phải mic source (chưa gửi type:mic) thì coi như listener
   micListeners.add(ws);
@@ -451,15 +541,15 @@ wssMic.on('connection', (ws) => {
 const wssSpeaker = new WebSocket.Server({ noServer: true });
 let speakerSocket = null; // ESP32-S3 speaker receiver
 
-wssSpeaker.on('connection', (ws) => {
-  console.log('WS client connected to /speaker');
+wssSpeaker.on("connection", (ws) => {
+  console.log("WS client connected to /speaker");
 
-  ws.on('message', (data, isBinary) => {
+  ws.on("message", (data, isBinary) => {
     if (!isBinary) {
       const text = data.toString();
-      if (text === 'type:speaker') {
+      if (text === "type:speaker") {
         speakerSocket = ws;
-        console.log('Registered speaker client');
+        console.log("Registered speaker client");
       }
       return;
     }
@@ -475,30 +565,51 @@ wssSpeaker.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
-    console.log('WS /speaker client disconnected');
+  ws.on("close", () => {
+    console.log("WS /speaker client disconnected");
     if (ws === speakerSocket) {
       speakerSocket = null;
-      console.log('Speaker device disconnected');
+      console.log("Speaker device disconnected");
     }
   });
 
-  ws.on('error', (err) => console.error('WS /speaker error:', err));
+  ws.on("error", (err) => console.error("WS /speaker error:", err));
 });
 
 // ============== Upgrade routing cho nhiều path ==============
-// Pattern này đúng theo ví dụ "multiple servers sharing a single HTTP server" của ws. [web:38]
-server.on('upgrade', (request, socket, head) => {
+// Pattern này đúng theo ví dụ "multiple servers sharing a single HTTP server" của ws
+server.on("upgrade", (request, socket, head) => {
   const { url } = request;
+  const token = url.searchParams.get("token");
 
-  if (url === '/car') {
-    wssCar.handleUpgrade(request, socket, head, (ws) => wssCar.emit('connection', ws, request));
-  } else if (url === '/cam') {
-    wssCam.handleUpgrade(request, socket, head, (ws) => wssCam.emit('connection', ws, request));
-  } else if (url === '/mic') {
-    wssMic.handleUpgrade(request, socket, head, (ws) => wssMic.emit('connection', ws, request));
-  } else if (url === '/speaker') {
-    wssSpeaker.handleUpgrade(request, socket, head, (ws) => wssSpeaker.emit('connection', ws, request));
+  let user;
+
+  // try {
+  //   // user = jwt.verify(token, secretKey);
+  //   const decode = jwt.decode(token);
+  //   const userId = decode.sub;
+  //   console.log("user id (tho tai):", userId);
+  // } catch {
+  //   socket.destroy();
+  //   return;
+  // }
+
+  if (url === "/car") {
+    wssCar.handleUpgrade(request, socket, head, (ws) =>
+      wssCar.emit("connection", ws, request),
+    );
+  } else if (url === "/cam") {
+    wssCam.handleUpgrade(request, socket, head, (ws) =>
+      wssCam.emit("connection", ws, request),
+    );
+  } else if (url === "/mic") {
+    wssMic.handleUpgrade(request, socket, head, (ws) =>
+      wssMic.emit("connection", ws, request),
+    );
+  } else if (url === "/speaker") {
+    wssSpeaker.handleUpgrade(request, socket, head, (ws) =>
+      wssSpeaker.emit("connection", ws, request),
+    );
   } else {
     socket.destroy();
   }
@@ -507,7 +618,6 @@ server.on('upgrade', (request, socket, head) => {
 server.listen(PORT, () => {
   console.log(`HTTP+WS server listening on port ${PORT}`);
 });
-
 
 // ... giữ nguyên các require và PORT
 

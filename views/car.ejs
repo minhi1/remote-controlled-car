@@ -82,7 +82,7 @@
 
       document.getElementById('galleryGrid').prepend(item);
     }
-    
+
     // --- Load Gallery From Database
     async function loadGalleryFromDB() {
       console.log("Loading gallery from database...");
@@ -114,7 +114,7 @@
         return;
       }
 
-      images.forEach(element => {  
+      images.forEach(element => {
         const img = new Image();
 
         img.src = element.url;
@@ -130,7 +130,7 @@
         addImageToGallery(img);
       });
     }
-    
+
     // --- Modal Logic ---
     let currentOpenedImage = null;
 
@@ -141,7 +141,7 @@
 
       modal.style.display = "flex"; // Show the modal
       modalImg.src = imageSrc;      // Set the image source
-    
+
       // Set current opened image
       currentOpenedImage = imageSrc;
     }
@@ -151,7 +151,7 @@
 
       const btn = document.getElementById('btnAnalyze');
       const originalText = btn.innerText;
-      
+
       // 1. Show loading state
       btn.innerText = "⏳ Analyzing...";
       btn.disabled = true;
@@ -170,9 +170,9 @@
         console.log("Analysis Result:", data);
 
         // 3. Display Result (Simple alert for now, or log to your Activity Log)
-        // alert("Analysis Complete! Check Console for details.\n\nTop Tag: " + 
+        // alert("Analysis Complete! Check Console for details.\n\nTop Tag: " +
         //       (data.result?.tags?.[0]?.tag?.en || "No tags found"));
-        
+
         addLog("Analysis received", "success");
 
       } catch (error) {
@@ -382,11 +382,11 @@
           'Content-Type': 'application/json'
         },
         // Send the dataURL as a JSON object
-        body: JSON.stringify({ image: dataURL })       
+        body: JSON.stringify({ image: dataURL })
       })
       .then(resp => {
         console.log("Response from ImgBB:", resp);
-        return resp; 
+        return resp;
       })
       .catch(err => {
         console.error('Error uploading img to imgBB', err);
@@ -408,7 +408,7 @@
       };
 
       addImageToGallery(img);
-      addLog('Frame captured', 'success'); 
+      addLog('Frame captured', 'success');
 
       // const item = document.createElement('div');
       // item.className = 'gallery-item';
@@ -713,7 +713,11 @@
 
 
     // --- 5. Initialize WebSocket /car & /cam ---
-    wsCar = new WebSocket(getWsUrl('/car'));
+    const token = document.cookie
+    .split("; ")
+    .find(r => r.startsWith("token="))
+    ?.split("=")[1];
+    wsCar = new WebSocket(getWsUrl('/car?token=${encodeURIComponent(token)}'));
     wsCar.onopen = () => addLog('Car Connected', 'success');
     wsCar.onerror = () => addLog('Car Connection Error', 'error');
     wsCar.onclose = () => addLog('Car Disconnected', 'warning');
@@ -753,11 +757,11 @@
     <span class="close-btn" onclick="closeModal()">&times;</span>
     <div style="position: relative; text-align: center;">
       <img class="modal-content" id="fullImage">
-      
+
       <button id="btnAnalyze" class="analyze-btn" onclick="analyzeCurrentImage()">
         🔍 Analyze Image
       </button>
-    </div>   
+    </div>
     <!-- <img class="modal-content" id="fullImage"> -->
     </div>
 </body>

@@ -62,7 +62,7 @@ app.get(["/", "/index.html", "/index"], (req, res) => {
   res.render("index", { isLoggedIn, username });
 });
 
-app.get(['/guide', '/guide.html'], (req, res) => {
+app.get(["/guide", "/guide.html"], (req, res) => {
   res.render("user-guide");
 });
 
@@ -436,6 +436,10 @@ const viewers = new Set(); // các browser xem video
 
 wssCam.on("connection", (ws, request) => {
   console.log("WS client connected to /cam");
+  ws.isAlive = true; // For ping/pong
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
 
   ws.on("message", (data, isBinary) => {
     if (!isBinary) {
@@ -562,7 +566,7 @@ wssSpeaker.on("connection", (ws) => {
 // Pattern này đúng theo ví dụ "multiple servers sharing a single HTTP server" của ws
 server.on("upgrade", (request, socket, head) => {
   const { url } = request;
-  
+
   if (url === "/car") {
     wssCar.handleUpgrade(request, socket, head, (ws) =>
       wssCar.emit("connection", ws, request),

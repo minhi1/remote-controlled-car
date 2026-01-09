@@ -296,18 +296,100 @@ wssCam.on('connection', (ws, request) => {
   viewers.add(ws);
 });
 
-// ===== Upgrade routing cho 2 path khác nhau =====
+// ============== WS /mic: ESP32-S3 mic -> broadcast lên web ==============
+const wssMic = new WebSocket.Server({ noServer: true });
+let micSocket = null;           // ESP32-S3 mic sender
+const micListeners = new Set(); // các browser nghe mic
+
+wssMic.on('connection', (ws) => {
+  console.log('WS client connected to /mic');
+
+  ws.on('message', (data, isBinary) => {
+    if (!isBinary) {
+      const text = data.toString();
+      if (text === 'type:mic') {
+        micSocket = ws;
+        console.log('Registered mic client');
+      }
+      return;
+    }
+
+    // Binary PCM16 -> broadcast tới listeners (browser)
+    // (ESP gửi lên, browser nhận để phát WebAudio)
+    for (const client of micListeners) {
+      if (client.readyState !== WebSocket.OPEN) continue;
+      if (client.bufferedAmount > 512 * 1024) continue;
+      client.send(data, { binary: true });
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('WS /mic client disconnected');
+    if (ws === micSocket) {
+      micSocket = null;
+      console.log('Mic source disconnected');
+    }
+    micListeners.delete(ws);
+  });
+
+  ws.on('error', (err) => console.error('WS /mic error:', err));
+
+  // Nếu không phải mic source (chưa gửi type:mic) thì coi như listener
+  micListeners.add(ws);
+});
+
+// ============== WS /speaker: browser -> ESP32-S3 speaker ==============
+const wssSpeaker = new WebSocket.Server({ noServer: true });
+let speakerSocket = null; // ESP32-S3 speaker receiver
+
+wssSpeaker.on('connection', (ws) => {
+  console.log('WS client connected to /speaker');
+
+  ws.on('message', (data, isBinary) => {
+    if (!isBinary) {
+      const text = data.toString();
+      if (text === 'type:speaker') {
+        speakerSocket = ws;
+        console.log('Registered speaker client');
+      }
+      return;
+    }
+
+    // Binary PCM16 từ browser -> forward cho ESP32-S3 phát loa
+    if (ws !== speakerSocket) {
+      if (speakerSocket && speakerSocket.readyState === WebSocket.OPEN) {
+        // chống backlog cho ESP32
+        if (speakerSocket.bufferedAmount < 256 * 1024) {
+          speakerSocket.send(data, { binary: true });
+        }
+      }
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('WS /speaker client disconnected');
+    if (ws === speakerSocket) {
+      speakerSocket = null;
+      console.log('Speaker device disconnected');
+    }
+  });
+
+  ws.on('error', (err) => console.error('WS /speaker error:', err));
+});
+
+// ============== Upgrade routing cho nhiều path ==============
+// Pattern này đúng theo ví dụ "multiple servers sharing a single HTTP server" của ws. [web:38]
 server.on('upgrade', (request, socket, head) => {
   const { url } = request;
 
   if (url === '/car') {
-    wssCar.handleUpgrade(request, socket, head, (ws) => {
-      wssCar.emit('connection', ws, request);
-    });
+    wssCar.handleUpgrade(request, socket, head, (ws) => wssCar.emit('connection', ws, request));
   } else if (url === '/cam') {
-    wssCam.handleUpgrade(request, socket, head, (ws) => {
-      wssCam.emit('connection', ws, request);
-    });
+    wssCam.handleUpgrade(request, socket, head, (ws) => wssCam.emit('connection', ws, request));
+  } else if (url === '/mic') {
+    wssMic.handleUpgrade(request, socket, head, (ws) => wssMic.emit('connection', ws, request));
+  } else if (url === '/speaker') {
+    wssSpeaker.handleUpgrade(request, socket, head, (ws) => wssSpeaker.emit('connection', ws, request));
   } else {
     socket.destroy();
   }
@@ -316,7 +398,6 @@ server.on('upgrade', (request, socket, head) => {
 server.listen(PORT, () => {
   console.log(`HTTP+WS server listening on port ${PORT}`);
 });
-
 
 
 // ... giữ nguyên các require và PORT
